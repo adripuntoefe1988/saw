@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TERMINAL — El Juego de Jigsaw</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CONFIGURACIÓN — edita aquí para cada sala (no toques nada más)
+   Las soluciones están en el bloque de JavaScript de abajo, en CONFIG.
+   ============================================================ */
+
+:root{
+  --bg:        #07090a;   /* negro verdoso de fondo */
+  --panel:     #0d1310;   /* paneles */
+  --sick:      #8a9b4a;   /* verde enfermizo SAW */
+  --sick-dim:  #5a6630;
+  --phos:      #9fce5a;   /* fósforo de pantalla */
+  --rust:      #8b2e1f;   /* óxido / sangre seca */
+  --rust-lit:  #c14228;
+  --amber:     #b8860b;   /* ámbar institucional */
+  --bone:      #d8d4c4;   /* blanco hueso */
+  --mute:      #4c5347;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--phos);
+  font-family:'Share Tech Mono',monospace;
+  overflow:hidden;
+  -webkit-font-smoothing:none;
+}
+
+/* ---- monitor CRT: rayas, viñeta, parpadeo (la "firma" visual) ---- */
+.crt::before{
+  content:"";position:fixed;inset:0;z-index:90;pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(0,0,0,.28) 3px,
+    rgba(0,0,0,0) 4px);
+  mix-blend-mode:multiply;
+}
+.crt::after{
+  content:"";position:fixed;inset:0;z-index:91;pointer-events:none;
+  background:radial-gradient(ellipse at center,
+    rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%);
+  animation:flicker 4.5s infinite steps(60);
+}
+@keyframes flicker{ 0%,97%{opacity:1} 98%{opacity:.86} 99%{opacity:.96} 100%{opacity:1} }
+
+#app{
+  position:relative;z-index:1;height:100%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:clamp(16px,4vw,48px);text-align:center;
+}
+
+/* ---- cuenta atrás fija arriba ---- */
+#timerbar{
+  position:fixed;top:0;left:0;right:0;z-index:80;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px clamp(14px,3vw,34px);
+  border-bottom:1px solid var(--sick-dim);
+  background:linear-gradient(to bottom,rgba(12,18,14,.92),rgba(12,18,14,.55));
+}
+#timerbar .label{font-size:.72rem;letter-spacing:.28em;color:var(--mute)}
+#clock{
+  font-family:'Special Elite',monospace;
+  font-size:clamp(1.6rem,5vw,2.6rem);
+  color:var(--rust-lit);text-shadow:0 0 12px rgba(193,66,40,.6);letter-spacing:.06em;
+}
+#clock.warn{color:#e8d44a;text-shadow:0 0 14px rgba(232,212,74,.7);animation:pulse 1s infinite}
+#clock.crit{color:var(--rust-lit);animation:pulse .5s infinite}
+@keyframes pulse{50%{opacity:.4}}
+#timerbar .penalty{font-size:.7rem;color:var(--rust);letter-spacing:.1em;min-height:1em}
+
+/* ---- tipografía de contenido ---- */
+.eyebrow{font-size:.74rem;letter-spacing:.4em;color:var(--mute);margin-bottom:18px;text-transform:uppercase}
+h1{font-family:'Special Elite',monospace;font-weight:400;line-height:1.05;
+   font-size:clamp(2rem,7vw,3.6rem);color:var(--bone);letter-spacing:.02em;margin-bottom:22px}
+h1 .red{color:var(--rust-lit)}
+.boot-line{font-size:clamp(.85rem,2.2vw,1.05rem);color:var(--sick);text-align:left;
+   max-width:760px;width:100%;white-space:pre-wrap;min-height:60vh;line-height:1.85}
+.cursor{display:inline-block;width:.6ch;background:var(--phos);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+
+.prompt{font-size:clamp(1.05rem,3vw,1.4rem);color:var(--bone);margin-bottom:14px;line-height:1.5;max-width:740px}
+.sub{font-size:.95rem;color:var(--sick);margin-bottom:30px;max-width:680px;line-height:1.7}
+.cipher{font-family:'Special Elite',monospace;font-size:clamp(1.4rem,5vw,2.4rem);
+   color:var(--amber);letter-spacing:.18em;margin:8px 0 26px;text-shadow:0 0 10px rgba(184,134,11,.4)}
+
+/* ---- inputs y botones ---- */
+.field{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%;max-width:520px;margin:0 auto}
+input[type=text]{
+  flex:1;min-width:200px;background:#040605;border:1px solid var(--sick-dim);
+  color:var(--phos);font-family:'Share Tech Mono',monospace;font-size:1.15rem;
+  padding:14px 16px;letter-spacing:.12em;text-transform:uppercase;outline:none;border-radius:2px;
+}
+input[type=text]:focus{border-color:var(--sick);box-shadow:0 0 0 1px var(--sick-dim) inset}
+button{
+  background:transparent;border:1px solid var(--rust);color:var(--rust-lit);
+  font-family:'Share Tech Mono',monospace;font-size:1.05rem;letter-spacing:.16em;
+  padding:14px 26px;cursor:pointer;text-transform:uppercase;border-radius:2px;transition:.15s;
+}
+button:hover{background:var(--rust);color:var(--bone);box-shadow:0 0 18px rgba(139,46,31,.6)}
+button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.ghost{border-color:var(--sick-dim);color:var(--sick)}
+.ghost:hover{background:var(--sick-dim);color:var(--bone);box-shadow:none}
+
+.feedback{min-height:1.6em;margin-top:18px;font-size:1rem;letter-spacing:.06em}
+.feedback.ok{color:var(--phos)}
+.feedback.no{color:var(--rust-lit)}
+
+/* dígitos del código final que se van revelando */
+#codebar{display:flex;gap:14px;justify-content:center;margin:26px 0 8px}
+.digit{width:52px;height:64px;border:1px solid var(--sick-dim);border-radius:3px;
+  display:flex;align-items:center;justify-content:center;font-family:'Special Elite',monospace;
+  font-size:2rem;color:var(--mute);background:#040605}
+.digit.lit{color:var(--rust-lit);border-color:var(--rust);text-shadow:0 0 12px rgba(193,66,40,.7)}
+
+/* botón de pista */
+#hintwrap{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:80}
+#hintBtn{border-color:var(--amber);color:var(--amber);font-size:.82rem;padding:10px 18px}
+#hintBtn:hover{background:var(--amber);color:#1a1206}
+.hintbox{max-width:600px;margin:18px auto 0;color:var(--amber);font-size:.95rem;line-height:1.6;min-height:1em}
+
+/* ---- la marioneta (SVG propio, sin copyright) ---- */
+.puppet{width:clamp(110px,22vw,180px);margin:0 auto 26px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.7))}
+
+/* ---- pantallas finales ---- */
+.win h1{color:var(--phos);text-shadow:0 0 22px rgba(159,206,90,.5)}
+.lose h1{color:var(--rust-lit);text-shadow:0 0 22px rgba(193,66,40,.6)}
+.bigtime{font-family:'Special Elite',monospace;font-size:clamp(2.2rem,8vw,4rem);color:var(--bone);margin:10px 0}
+
+/* ---- panel del organizador ---- */
+#gm{position:fixed;inset:0;z-index:200;background:rgba(4,6,5,.96);display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+#gm.show{display:flex}
+#gm h2{font-family:'Special Elite';color:var(--amber);letter-spacing:.1em;margin-bottom:6px}
+#gm .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:680px}
+#gm small{color:var(--mute);max-width:560px;line-height:1.6;font-size:.8rem}
+#gm button{font-size:.85rem;padding:10px 16px}
+
+.hidden{display:none !important}
+@media (prefers-reduced-motion:reduce){
+  .crt::after{animation:none}
+  #clock.warn,#clock.crit{animation:none}
+  .cursor{animation:none}
+}
+</style>
+</head>
+<body class="crt">
+
+<div id="timerbar" class="hidden">
+  <span class="label">TIEMPO RESTANTE</span>
+  <span id="clock">60:00</span>
+  <span class="penalty" id="penalty"></span>
+</div>
+
+<div id="app"><!-- las pantallas se inyectan aquí --></div>
+
+<div id="hintwrap" class="hidden">
+  <button id="hintBtn">⚠ Pedir pista a Jigsaw (−3:00)</button>
+  <div class="hintbox" id="hintbox"></div>
+</div>
+
+<!-- PANEL DEL ORGANIZADOR (pulsa la tecla J tres veces) -->
+<div id="gm">
+  <h2>· PANEL DEL ORGANIZADOR ·</h2>
+  <div class="row">
+    <button class="ghost" data-gm="addtime">+5 min</button>
+    <button class="ghost" data-gm="subtime">−5 min</button>
+    <button class="ghost" data-gm="pause">Pausar / Reanudar</button>
+    <button class="ghost" data-gm="skip">Saltar desafío</button>
+    <button data-gm="reset">REINICIAR JUEGO</button>
+  </div>
+  <small id="gmsolutions"></small>
+  <small>Cierra este panel con la tecla <b>Esc</b>. Las soluciones de arriba son para tu referencia; edítalas en el bloque CONFIG del archivo.</small>
+  <button class="ghost" data-gm="close" style="margin-top:8px">Cerrar panel</button>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — CAMBIA AQUÍ TODO SIN TOCAR EL RESTO DEL CÓDIGO
+   ============================================================ */
+const CONFIG = {
+  minutes: 60,                 // duración de la cuenta atrás
+  hintPenaltySec: 180,         // segundos que resta cada pista (180 = 3 min)
+  maxHints: 3,                 // pistas disponibles
+
+  password: "RESPIRA",         // contraseña de acceso (Fase 1)
+
+  // Los 3 desafíos. Cada acierto enciende un dígito del código final.
+  challenges: [
+    {
+      type: "text",
+      title: "DESAFÍO 1 — DESCIFRA EL MENSAJE",
+      lead: "Las letras han sido desplazadas 3 posiciones en el alfabeto. Devuélvelas a su lugar.",
+      cipher: "OD YLGD HV XQ MXHJR",
+      answers: ["LA VIDA ES UN JUEGO"],
+      digit: "9",
+      hints: [
+        "Cada letra está 3 lugares por delante. La O vuelve a la L...",
+        "Cifrado César. O→L, D→A, Y→V...",
+        "La frase es: LA VIDA ES UN JUEGO"
+      ]
+    },
+    {
+      type: "text",
+      title: "DESAFÍO 2 — EL ACERTIJO",
+      lead: "Cuanto más le quitas, más grande se vuelve. ¿Qué es?",
+      cipher: "",
+      answers: ["UN AGUJERO","AGUJERO","UN HOYO","HOYO"],
+      digit: "3",
+      hints: [
+        "Lo cavas en la tierra.",
+        "Cuanto más excavas, mayor es...",
+        "Es un AGUJERO (o un hoyo)."
+      ]
+    },
+    {
+      type: "text",
+      title: "DESAFÍO 3 — LA SECUENCIA",
+      lead: "Completa la serie. ¿Qué número falta?",
+      cipher: "2  —  4  —  8  —  16  —  ?",
+      answers: ["32"],
+      digit: "1",
+      hints: [
+        "Cada número guarda relación con el anterior.",
+        "Cada número es el doble del anterior.",
+        "16 × 2 = 32"
+      ]
+    }
+  ],
+
+  finalCode: "931"             // debe coincidir con los 3 dígitos de arriba en orden
+};
+
+/* ============================================================
+   MOTOR DEL TERMINAL — normalmente no necesitas tocar nada de aquí
+   ============================================================ */
+const app = document.getElementById('app');
+const timerbar = document.getElementById('timerbar');
+const clockEl = document.getElementById('clock');
+const penaltyEl = document.getElementById('penalty');
+const hintwrap = document.getElementById('hintwrap');
+const hintBtn = document.getElementById('hintBtn');
+const hintbox = document.getElementById('hintbox');
+
+let state = {
+  secs: CONFIG.minutes*60,
+  running: false,
+  paused: false,
+  step: 0,            // 0=login, 1..N desafíos, N+1 código final
+  solved: [],         // dígitos revelados
+  hintsUsed: 0,
+  hintIndex: 0,
+  ticker: null,
+  ended: false
+};
+
+const PUPPET = `
+<svg class="puppet" viewBox="0 0 120 150" role="img" aria-label="marioneta">
+  <ellipse cx="60" cy="62" rx="44" ry="52" fill="#e9e4d3" stroke="#2b2b27" stroke-width="2"/>
+  <ellipse cx="60" cy="118" rx="30" ry="14" fill="#cfc7b2" stroke="#2b2b27" stroke-width="2"/>
+  <rect x="44" y="104" width="32" height="10" fill="#e9e4d3" stroke="#2b2b27" stroke-width="2"/>
+  <ellipse cx="42" cy="56" rx="11" ry="13" fill="#fff"/><circle cx="42" cy="57" r="6" fill="#111"/>
+  <ellipse cx="78" cy="56" rx="11" ry="13" fill="#fff"/><circle cx="78" cy="57" r="6" fill="#111"/>
+  <path d="M30 36 Q42 28 54 36" fill="none" stroke="#2b2b27" stroke-width="3"/>
+  <path d="M66 36 Q78 28 90 36" fill="none" stroke="#2b2b27" stroke-width="3"/>
+  <path d="M30 84 q12 14 30 14 q18 0 30 -14" fill="none" stroke="#2b2b27" stroke-width="3"/>
+  <line x1="48" y1="80" x2="48" y2="96" stroke="#2b2b27" stroke-width="2"/>
+  <line x1="72" y1="80" x2="72" y2="96" stroke="#2b2b27" stroke-width="2"/>
+  <circle cx="30" cy="76" r="9" fill="none" stroke="#8b2e1f" stroke-width="3"/>
+  <circle cx="90" cy="76" r="9" fill="none" stroke="#8b2e1f" stroke-width="3"/>
+</svg>`;
+
+/* ---------- utilidades ---------- */
+function norm(s){ return s.toUpperCase().replace(/\s+/g,' ').trim(); }
+function fmt(sec){
+  if(sec<0) sec=0;
+  const m=String(Math.floor(sec/60)).padStart(2,'0');
+  const s=String(sec%60).padStart(2,'0');
+  return m+':'+s;
+}
+function renderClock(){
+  clockEl.textContent = fmt(state.secs);
+  clockEl.classList.toggle('warn', state.secs<=120 && state.secs>30);
+  clockEl.classList.toggle('crit', state.secs<=30);
+}
+function startTimer(){
+  if(state.ticker) return;
+  state.running=true;
+  state.ticker=setInterval(()=>{
+    if(state.paused||state.ended) return;
+    state.secs--;
+    renderClock();
+    if(state.secs<=0){ state.secs=0; renderClock(); lose(); }
+  },1000);
+}
+
+/* ---------- pantalla: arranque ---------- */
+function bootScreen(){
+  timerbar.classList.add('hidden');
+  hintwrap.classList.add('hidden');
+  app.innerHTML = `<pre class="boot-line" id="boot"></pre>`;
+  const lines = [
+    "> CONECTANDO...",
+    "> SUJETO LOCALIZADO.",
+    "> INICIANDO PROTOCOLO.",
+    "",
+    "Hola. Quiero jugar a un juego.",
+    "",
+    "Durante toda tu vida has dado tu libertad por sentada.",
+    "Hoy aprenderás lo que vale.",
+    "",
+    "Ante ti tienes el reloj. Cuando llegue a cero, el juego termina.",
+    "Supera las pruebas. Encuentra la palabra. Escríbela aquí.",
+    "",
+    "Vivir o perder. Tú eliges.",
+    "",
+    "> [ pulsa una tecla o toca la pantalla para continuar ]"
+  ];
+  const full = lines.join("\n");
+  const el = document.getElementById('boot');
+  let i=0, done=false, advanced=false;
+  const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  function finishTyping(){
+    done=true; if(typer) clearInterval(typer);
+    el.innerHTML = full + '<span class="cursor">&nbsp;</span>';
+  }
+  function go(){           // primera pulsación: termina el tecleo; segunda: avanza
+    if(!done){ finishTyping(); return; }
+    if(advanced) return;
+    advanced=true;
+    document.removeEventListener('keydown',go); app.removeEventListener('click',go);
+    loginScreen();
+  }
+
+  let typer=null;
+  if(reduce){ finishTyping(); }
+  else{
+    typer=setInterval(()=>{
+      el.innerHTML = full.slice(0,i) + '<span class="cursor">&nbsp;</span>';
+      i++;
+      if(i>full.length) finishTyping();
+    },22);
+  }
+  document.addEventListener('keydown',go);
+  app.addEventListener('click',go);
+}
+
+/* ---------- pantalla: login ---------- */
+function loginScreen(){
+  timerbar.classList.remove('hidden');
+  startTimer();
+  renderClock();
+  app.innerHTML = `
+    ${PUPPET}
+    <div class="eyebrow">Acceso restringido</div>
+    <div class="prompt">Introduce la palabra que has reconstruido.</div>
+    <div class="sub">Tres fragmentos. Una sola palabra. Es tu llave.</div>
+    <div class="field">
+      <input id="pw" type="text" autocomplete="off" placeholder="contraseña" autofocus>
+      <button id="go">Entrar</button>
+    </div>
+    <div class="feedback" id="fb"></div>`;
+  const inp=document.getElementById('pw');
+  const fb=document.getElementById('fb');
+  function attempt(){
+    if(norm(inp.value)===norm(CONFIG.password)){
+      fb.textContent="ACCESO CONCEDIDO."; fb.className="feedback ok";
+      setTimeout(()=>{ state.step=1; challengeScreen(); },700);
+    }else{
+      fb.textContent="PALABRA INCORRECTA."; fb.className="feedback no";
+      inp.value=""; inp.focus();
+    }
+  }
+  document.getElementById('go').onclick=attempt;
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') attempt(); });
+  inp.focus();
+}
+
+/* ---------- pantalla: desafíos ---------- */
+function codebarHTML(){
+  const total=CONFIG.challenges.length;
+  let cells='';
+  for(let k=0;k<total;k++){
+    const lit = state.solved[k]!==undefined;
+    cells += `<div class="digit ${lit?'lit':''}">${lit?state.solved[k]:'?'}</div>`;
+  }
+  return `<div id="codebar">${cells}</div>`;
+}
+function challengeScreen(){
+  hintwrap.classList.remove('hidden');
+  hintbox.textContent=''; state.hintIndex=0;
+  const idx=state.step-1;
+  const c=CONFIG.challenges[idx];
+  app.innerHTML = `
+    <div class="eyebrow">${idx+1} de ${CONFIG.challenges.length}</div>
+    <div class="prompt">${c.title}</div>
+    <div class="sub">${c.lead}</div>
+    ${c.cipher?`<div class="cipher">${c.cipher}</div>`:''}
+    <div class="field">
+      <input id="ans" type="text" autocomplete="off" placeholder="tu respuesta" autofocus>
+      <button id="send">Enviar</button>
+    </div>
+    <div class="feedback" id="fb"></div>
+    ${codebarHTML()}`;
+  updateHintBtn();
+  const inp=document.getElementById('ans');
+  const fb=document.getElementById('fb');
+  function attempt(){
+    const guess=norm(inp.value);
+    const ok=c.answers.some(a=>norm(a)===guess);
+    if(ok){
+      state.solved[idx]=c.digit;
+      fb.textContent="CORRECTO. CÓDIGO PARCIAL DESBLOQUEADO."; fb.className="feedback ok";
+      document.getElementById('codebar').outerHTML=codebarHTML();
+      setTimeout(()=>{
+        state.step++;
+        if(state.step>CONFIG.challenges.length) finalScreen();
+        else challengeScreen();
+      },900);
+    }else{
+      fb.textContent="RESPUESTA RECHAZADA."; fb.className="feedback no";
+      inp.value=""; inp.focus();
+    }
+  }
+  document.getElementById('send').onclick=attempt;
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') attempt(); });
+  inp.focus();
+}
+
+/* ---------- pantalla: código final ---------- */
+function finalScreen(){
+  hintwrap.classList.add('hidden');
+  app.innerHTML = `
+    ${PUPPET}
+    <div class="eyebrow">Última puerta</div>
+    <div class="prompt">Tienes los tres dígitos. Compón el código que abre tu libertad.</div>
+    ${codebarHTML()}
+    <div class="field" style="margin-top:18px">
+      <input id="fc" type="text" autocomplete="off" placeholder="código final" autofocus>
+      <button id="open">Abrir</button>
+    </div>
+    <div class="feedback" id="fb"></div>`;
+  const inp=document.getElementById('fc');
+  const fb=document.getElementById('fb');
+  function attempt(){
+    if(norm(inp.value).replace(/[\s-]/g,'')===norm(CONFIG.finalCode)){ win(); }
+    else{ fb.textContent="CÓDIGO ERRÓNEO."; fb.className="feedback no"; inp.value=""; inp.focus(); }
+  }
+  document.getElementById('open').onclick=attempt;
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') attempt(); });
+  inp.focus();
+}
+
+/* ---------- finales ---------- */
+function win(){
+  state.ended=true; hintwrap.classList.add('hidden');
+  const finished=fmt(CONFIG.minutes*60 - state.secs);
+  app.className=''; app.classList.add('win');
+  app.innerHTML = `
+    ${PUPPET}
+    <div class="eyebrow">Fin del juego</div>
+    <h1>HAS GANADO<br><span class="red">TU VIDA</span></h1>
+    <div class="sub">Has demostrado que sabes apreciarla. Enhorabuena. Sigue jugando.</div>
+    <div class="prompt">Tiempo empleado</div>
+    <div class="bigtime">${finished}</div>`;
+}
+function lose(){
+  if(state.ended) return;
+  state.ended=true; hintwrap.classList.add('hidden');
+  clockEl.classList.add('crit');
+  app.className=''; app.classList.add('lose');
+  app.innerHTML = `
+    ${PUPPET}
+    <div class="eyebrow">Fin del juego</div>
+    <h1>SE ACABÓ<br><span style="color:var(--rust-lit)">EL TIEMPO</span></h1>
+    <div class="sub">El reloj ha llegado a cero. Pero esto solo era un juego... y siempre hay una segunda partida.</div>`;
+}
+
+/* ---------- pistas ---------- */
+function updateHintBtn(){
+  const left=CONFIG.maxHints-state.hintsUsed;
+  hintBtn.textContent = left>0 ? `⚠ Pedir pista a Jigsaw (−${fmt(CONFIG.hintPenaltySec).replace(/^0/,'')}) · quedan ${left}`
+                               : "Sin pistas disponibles";
+  hintBtn.disabled = left<=0;
+  hintBtn.style.opacity = left<=0 ? .4 : 1;
+}
+hintBtn.onclick=()=>{
+  if(state.hintsUsed>=CONFIG.maxHints || state.ended) return;
+  const idx=state.step-1;
+  const c=CONFIG.challenges[idx];
+  if(!c) return;
+  const tip=c.hints[Math.min(state.hintIndex,c.hints.length-1)];
+  hintbox.textContent="JIGSAW: «"+tip+"»";
+  state.hintIndex++;
+  state.hintsUsed++;
+  state.secs=Math.max(0,state.secs-CONFIG.hintPenaltySec);
+  renderClock();
+  penaltyEl.textContent=`−${Math.round(CONFIG.hintPenaltySec/60)} min`;
+  setTimeout(()=>penaltyEl.textContent='',2500);
+  updateHintBtn();
+  if(state.secs<=0) lose();
+};
+
+/* ---------- panel del organizador (tecla J x3, cerrar con Esc) ---------- */
+const gm=document.getElementById('gm');
+let jSeq=0,jTimer=null;
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ gm.classList.remove('show'); return; }
+  if(e.key.toLowerCase()==='j'){
+    jSeq++; clearTimeout(jTimer); jTimer=setTimeout(()=>jSeq=0,900);
+    if(jSeq>=3){ jSeq=0; openGM(); }
+  }
+});
+function openGM(){
+  document.getElementById('gmsolutions').innerHTML =
+    `Contraseña: <b>${CONFIG.password}</b> · Código final: <b>${CONFIG.finalCode}</b> · ` +
+    CONFIG.challenges.map((c,i)=>`D${i+1}: <b>${c.answers[0]}</b> (→${c.digit})`).join(' · ');
+  gm.classList.add('show');
+}
+gm.addEventListener('click',e=>{
+  const a=e.target.getAttribute('data-gm'); if(!a) return;
+  if(a==='close') gm.classList.remove('show');
+  if(a==='pause'){ state.paused=!state.paused; }
+  if(a==='addtime'){ state.secs+=300; renderClock(); }
+  if(a==='subtime'){ state.secs=Math.max(0,state.secs-300); renderClock(); }
+  if(a==='skip'){
+    if(state.step>=1 && state.step<=CONFIG.challenges.length){
+      const idx=state.step-1; state.solved[idx]=CONFIG.challenges[idx].digit;
+      state.step++;
+      gm.classList.remove('show');
+      if(state.step>CONFIG.challenges.length) finalScreen(); else challengeScreen();
+    }
+  }
+  if(a==='reset'){ location.reload(); }
+});
+
+/* ---------- arranque ---------- */
+renderClock();
+bootScreen();
+</script>
+</body>
+</html>
